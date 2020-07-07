@@ -65,6 +65,35 @@ datex.qqplot <- function(dat,dv,uv,level)
   p
 }
 
+datex.descriptives <- function(dat,dv,uv)
+{
+  dat %>% group_by(!!sym(uv)) %>% summarise(
+    mean = mean(!!sym(dv),na.rm=T),
+    sd = sd(!!sym(dv),na.rm=T),
+    n = length(!!sym(dv)),
+    se = sd/sqrt(n)
+  ) %>% select(c(uv,"n","mean","sd","se"))
+}
+
+datex.descriptives.x2 <- function(dat,dv,uv1,uv2)
+{
+  dat %>% group_by(!!sym(uv1),!!sym(uv2)) %>% summarise(
+    mean = mean(!!sym(dv),na.rm=T),
+    sd = sd(!!sym(dv),na.rm=T),
+    n = length(!!sym(dv)),
+    se = sd/sqrt(n)
+  ) %>% select(c(uv1,uv2,"n","mean","sd","se"))
+}
+
+datex.barplot <- function(dat,dv,uv)
+{
+  desc <- datex.descriptives(dat,dv,uv)
+  desc %>% ggplot(aes(y=mean,x=!!sym(uv),fill=!!sym(uv))) +
+    geom_bar(stat="identity",position=position_dodge()) +
+    theme(legend.position="none") +
+    geom_errorbar(aes(ymin=mean-se,ymax=mean+se),position=position_dodge(.9),width=.2,color="black") # up and down
+}
+
 datex.helper <- function(dat,id,dv,uv)
 {
   dat %>% group_by(!!sym(uv)) %>% mutate(outlier=datex.is_outlier(!!sym(dv))) %>% # outliers
@@ -73,4 +102,5 @@ datex.helper <- function(dat,id,dv,uv)
 }
 
 #Sys.setenv(PATH = paste("C:/RTools/usr/bin", Sys.getenv("PATH"), sep=";"))
-#dat <- read.csv("..\\sample_data_3.csv")
+#dat <- read.csv("mydata.csv")
+# dat$RTs <- dat$RTs*1000
