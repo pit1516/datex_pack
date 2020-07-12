@@ -1,5 +1,7 @@
 library(ez)
 library(tidyverse)
+library(afex)
+library(emmeans)
 
 datex.create_data <- function()
 {
@@ -67,12 +69,13 @@ datex.qqplot <- function(dat,dv,uv,level)
 
 datex.descriptives <- function(dat,dv,uv)
 {
-  dat %>% group_by(!!sym(uv)) %>% summarise(
+  dat %>% group_by(ID) %>% group_by(!!sym(uv)) %>% summarise(
     mean = mean(!!sym(dv),na.rm=T),
+    median = median(!!sym(dv),na.rm=T),
     sd = sd(!!sym(dv),na.rm=T),
     n = length(!!sym(dv)),
     se = sd/sqrt(n)
-  ) %>% select(c(uv,"n","mean","sd","se"))
+  ) %>% select(c(uv,"n","mean","median","sd","se"))
 }
 
 datex.descriptives.x2 <- function(dat,dv,uv1,uv2)
@@ -94,6 +97,15 @@ datex.barplot <- function(dat,dv,uv)
     geom_errorbar(aes(ymin=mean-se,ymax=mean+se),position=position_dodge(.9),width=.2,color="black") # up and down
 }
 
+datex.anova <- function(dat,dv,within,between)
+{
+  # ??? afex reports corrected DF, that is why it is strange...
+  if (within!="none" & between=="none") {res <- aov_ez("ID",dv,dat,within=within,anova_table=list(correction="none"))}
+  if (within=="none" & between!="none") {res <- aov_ez("ID",dv,dat,between=between)}
+  if (within!="none" & between!="none") {res <- aov_ez("ID",dv,dat,within=within,between=between)}
+  res
+}
+
 datex.helper <- function(dat,id,dv,uv)
 {
   dat %>% group_by(!!sym(uv)) %>% mutate(outlier=datex.is_outlier(!!sym(dv))) %>% # outliers
@@ -101,6 +113,16 @@ datex.helper <- function(dat,id,dv,uv)
   mutate(point=ifelse(outlier==T,as.numeric(NA),!!sym(dv))) # outlier points
 }
 
+checks <- function()
+{
+  
+  mod1 <- anova_out(dat %>% ezANOVA(wid=.(ID),dv="Errors",within=.(Task,Modality),detailed=T))
+  mod2 <- anova_out(dat %>% filter(Modality=="manual") %>% ezANOVA(wid=.(ID),dv="Errors",within=.(Task),detailed=T))
+  mod1[3]
+  mod2[3]
+  
+}
+
 #Sys.setenv(PATH = paste("C:/RTools/usr/bin", Sys.getenv("PATH"), sep=";"))
-#dat <- read.csv("mydata.csv")
-# dat$RTs <- dat$RTs*1000
+#dat <- read.csv("Vst2.csv")
+#dat$RTs <- dat$RTs*1000
