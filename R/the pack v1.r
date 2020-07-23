@@ -2,6 +2,9 @@
 #library(tidyverse)
 #library(afex)
 #library(emmeans)
+# apparently, I should never use library in a package
+# but instead, devtools to add imports/depends to the description, and/or requireNamespace?!
+# http://r-pkgs.had.co.nz/namespace.html#namespace
 
 datex.create_data <- function()
 {
@@ -31,7 +34,8 @@ datex.is_outlier <- function(x) {
 
 datex.histo <- function(dat,dv,uv,bins,level)
 {
-  p <- ggplot(dat[dat[,uv]==level,],aes(x=!!sym(dv))) +
+  if (!missing(level)) {dat <- dat[dat[,uv]==level,]}
+  p <- ggplot(dat,aes(x=!!sym(dv))) +
     geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
                    bins=bins,
                    colour="black", fill="gray") +
@@ -67,6 +71,8 @@ datex.qqplot <- function(dat,dv,uv,level)
   p
 }
 
+# !!! all the descriptive stuff should be one function, really; or at least one for the summarise() which is always the same, and different
+#     ones for the pre-aggregation; plus parameters for one or two uvs
 datex.descriptives <- function(dat,dv,uv)
 {
   dat %>% group_by(ID) %>% group_by(!!sym(uv)) %>% summarise(
@@ -78,14 +84,40 @@ datex.descriptives <- function(dat,dv,uv)
   ) %>% select(c(uv,"n","mean","median","sd","se"))
 }
 
+datex.descriptives.between <- function(dat,dv,uv)
+{
+  by_PP.by_Exp <- dat %>% group_by(Exp,ID,!!sym(uv)) %>% summarise(
+    avg.by_PP.by_Exp = mean(!!sym(dv),na.rm=T))
+  by_PP.by_Exp %>% group_by(Exp,!!sym(uv)) %>% summarise(
+    n = length(avg.by_PP.by_Exp),
+    mean = mean(avg.by_PP.by_Exp,na.rm=T),
+    median = median(avg.by_PP.by_Exp,na.rm=T),
+    sd = sd(avg.by_PP.by_Exp,na.rm=T),
+    se = sd/sqrt(n)
+  ) %>% select(c(Exp,uv,"n","mean","median","sd","se"))
+}
+
 datex.descriptives.x2 <- function(dat,dv,uv1,uv2)
 {
-  dat %>% group_by(!!sym(uv1),!!sym(uv2)) %>% summarise(
-    mean = mean(!!sym(dv),na.rm=T),
-    sd = sd(!!sym(dv),na.rm=T),
-    n = length(!!sym(dv)),
-    se = sd/sqrt(n)
-  ) %>% select(c(uv1,uv2,"n","mean","sd","se"))
+  if (uv1!=uv2)
+  {
+    dat %>% group_by(!!sym(uv1),!!sym(uv2)) %>% summarise(
+      mean = mean(!!sym(dv),na.rm=T),
+      sd = sd(!!sym(dv),na.rm=T),
+      n = length(!!sym(dv)),
+      se = sd/sqrt(n)
+    ) %>% select(c(uv1,uv2,"n","mean","sd","se"))
+  }
+}
+
+datex.barplot.between <- function(dat,dv,uv)
+{
+    # !!! should be in the pack; think long and hard about how to best implement this (plot functionality for different things)
+  desc <- datex.descriptives.between(dat,dv,uv)
+  desc %>% ggplot(aes(y=mean,x=!!sym(uv),fill=Exp)) +
+    geom_bar(stat="identity",position=position_dodge()) +
+    #theme(legend.position="none") +
+    geom_errorbar(aes(ymin=mean-se,ymax=mean+se),position=position_dodge(.9),width=.2,color="black") # up and down
 }
 
 datex.barplot <- function(dat,dv,uv)
@@ -100,9 +132,10 @@ datex.barplot <- function(dat,dv,uv)
 datex.anova <- function(dat,dv,within,between)
 {
   # ??? afex reports corrected DF, that is why it is strange...
-  if (within!="none" & between=="none") {res <- aov_ez("ID",dv,dat,within=within,anova_table=list(correction="none"))}
-  if (within=="none" & between!="none") {res <- aov_ez("ID",dv,dat,between=between)}
-  if (within!="none" & between!="none") {res <- aov_ez("ID",dv,dat,within=within,between=between)}
+  # !!! type=2 only makes sense for backward compatibility with ezANOVA, I think !!!
+  if (within!="none" & between=="none") {res <- aov_ez("ID",dv,dat,within=within,type=2,anova_table=list(es="pes",correction="none"))}
+  if (within=="none" & between!="none") {res <- aov_ez("ID",dv,dat,between=between,type=2,anova_table=list(es="pes",correction="none"))}
+  if (within!="none" & between!="none") {res <- aov_ez("ID",dv,dat,within=within,type=2,between=between,anova_table=list(es="pes",correction="none"))}
   res
 }
 
@@ -111,6 +144,24 @@ datex.helper <- function(dat,id,dv,uv)
   dat %>% group_by(!!sym(uv)) %>% mutate(outlier=datex.is_outlier(!!sym(dv))) %>% # outliers
   mutate(label=ifelse(outlier==F,NA,!!sym(id))) %>% # outlier labels
   mutate(point=ifelse(outlier==T,as.numeric(NA),!!sym(dv))) # outlier points
+}
+
+datex.ridge <- function(dat,dv,uv,alpha_density=0.5,alpha_hist=0.2,scale=0.9,bins=10,facet,hist=FALSE,draw_baseline=T,col_density="black",col_hist="black",level,rug=FALSE)
+{
+  if (!missing(level)) {dat <- dat[dat[,uv]==level,]}
+  # !!! point_color is questionable... hard to see for some colors, maybe just leave that black?
+  p <- dat %>% ggplot(aes(x=!!sym(dv),y=!!sym(uv),fill=!!sym(uv),point_color=!!sym(uv)))
+  if (hist==TRUE) {p <- p + geom_density_ridges(color=col_hist,draw_baseline=draw_baseline,stat="binline",rel_min_height=0.0,scale=scale,alpha=alpha_hist,bins=bins)}
+  # ??? there HAS to be a better way, right ???
+  if (rug==FALSE) {p <- p + geom_density_ridges(color=col_density,rel_min_height=0.0,scale=scale,jittered_points=F,alpha=alpha_density)}
+  if (rug==TRUE) {p <- p + geom_density_ridges(color=col_density,rel_min_height=0.0,scale=scale,alpha=alpha_density,
+        jittered_points = TRUE,
+        point_shape = "|", point_size = 3, size = 0.25,
+        position = position_points_jitter(height = 0)
+  )}
+  if (!missing(facet)) {p <- p + facet_grid(cols=vars(!!sym(facet)),scales="free")}
+  p <- p + theme(legend.position="none")
+  p
 }
 
 checks <- function()
@@ -124,5 +175,7 @@ checks <- function()
 }
 
 #Sys.setenv(PATH = paste("C:/RTools/usr/bin", Sys.getenv("PATH"), sep=";"))
-#dat <- read.csv("Vst2.csv")
+#dat <- read.csv("FP-2c.csv")
+#dat$Exp <- "FP-2c"
+#write.csv(dat,row.names = F,file="out.csv")
 #dat$RTs <- dat$RTs*1000
