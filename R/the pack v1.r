@@ -146,13 +146,23 @@ datex.helper <- function(dat,id,dv,uv)
   mutate(point=ifelse(outlier==T,as.numeric(NA),!!sym(dv))) # outlier points
 }
 
-datex.ridge <- function(dat,dv,uv,alpha_density=0.5,alpha_hist=0.2,scale=0.9,bins=10,facet,hist=FALSE,draw_baseline=T,col_density="black",col_hist="black",level,rug=FALSE,quantiles=FALSE)
+meansd <- function(x, ...) {
+  mean <- mean(x)
+  sd <- sd(x)
+  n <- length(x)
+  se <- sd/sqrt(n)
+  c(mean - se, mean, mean + se)
+}
+
+datex.ridge <- function(dat,dv,uv,alpha_density=0.5,alpha_hist=0.2,scale=0.9,bins=10,facet,hist=FALSE,draw_baseline=T,col_density="black",col_hist="black",level,rug=FALSE,quantiles=FALSE,vsize=1,vcol="uv")
 {
   if (!missing(level)) {dat <- dat[dat[,uv]==level,]}
   # !!! point_color is questionable... hard to see for some colors, maybe just leave that black?
   p <- dat %>% ggplot(aes(x=!!sym(dv),y=!!sym(uv),fill=!!sym(uv),point_color=!!sym(uv)))
   if (hist==TRUE) {p <- p + geom_density_ridges(color=col_hist,draw_baseline=draw_baseline,stat="binline",rel_min_height=0.0,scale=scale,alpha=alpha_hist,bins=bins)}
-  p <- p + geom_density_ridges(
+  p <- p + stat_density_ridges(
+    geom="density_ridges",
+    calc_ecdf=TRUE,
     color=col_density,
     rel_min_height=0.0,
     scale=scale,
@@ -162,9 +172,10 @@ datex.ridge <- function(dat,dv,uv,alpha_density=0.5,alpha_hist=0.2,scale=0.9,bin
     point_size = 3, 
     size = 0.25,
     position = position_points_jitter(height = 0),
+#    quantiles = c(0.025,0.975),
     quantile_lines = quantiles, 
-    quantile_fun = mean,
-    vline_size=1,
+    quantile_fun = meansd,
+    vline_size=vsize,
     aes(vline_color=!!sym(uv))
   )
   if (!missing(facet)) {p <- p + facet_grid(cols=vars(!!sym(facet)),scales="free")}
