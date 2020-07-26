@@ -159,6 +159,7 @@ datex.ridge.2 <- function(dat,dv,uv,alpha_density=0.5,alpha_hist=0.2,scale=0.9,b
     geom="density_ridges_gradient",
     scale=scale,
     quantile_lines = quantiles, 
+    quantiles=3,
     quantile_fun = meansd
     )
   p_uv_based_colors <- stat_density_ridges(
@@ -175,6 +176,8 @@ datex.ridge.2 <- function(dat,dv,uv,alpha_density=0.5,alpha_hist=0.2,scale=0.9,b
     position = position_points_jitter(height = 0),
     quantile_lines = F
   )
+  p_base + p_mean_based_shade + p_uv_based_colors
+  #
   p <- p_base + p_mean_based_shade + p_uv_based_colors
   if (!missing(facet)) {p <- p + facet_grid(cols=vars(!!sym(facet)),scales="free")}
   p <- p + theme(legend.position="none")
@@ -217,7 +220,7 @@ meansd <- function(x, probs) {
   sd <- sd(x)
   n <- length(x)
   se <- sd/sqrt(n)
-  print(probs)
+  #print(probs)
   if (length(probs)>1) {return(c(mean - se, mean, mean + se))}
   else
     return(c(mean))
